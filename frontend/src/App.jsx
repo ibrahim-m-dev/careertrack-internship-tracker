@@ -1,33 +1,10 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
-const initialApplications = [
-  {
-    id: 1,
-    company: "IBM",
-    role: "Software Engineering Intern",
-    status: "Assessment",
-    location: "Bucharest / Hybrid",
-    deadline: "2026-07-05",
-    notes: "Coding assessment received"
-  },
-  {
-    id: 2,
-    company: "Siemens Energy",
-    role: "Working Student - IT Specialist",
-    status: "Applied",
-    location: "Bucharest",
-    deadline: "2026-07-10",
-    notes: "Resume and cover letter submitted"
-  }
-];
+const API_URL = "http://localhost:8080/api/applications";
 
 function App() {
-  const [applications, setApplications] = useState(() => {
-    const saved = localStorage.getItem("careertrack-applications");
-    return saved ? JSON.parse(saved) : initialApplications;
-  });
-
+  const [applications, setApplications] = useState([]);
   const [form, setForm] = useState({
     company: "",
     role: "",
@@ -39,13 +16,24 @@ function App() {
 
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem(
-      "careertrack-applications",
-      JSON.stringify(applications)
-    );
-  }, [applications]);
+    fetchApplications();
+  }, []);
+
+  async function fetchApplications() {
+    try {
+      const response = await fetch(API_URL);
+      const data = await response.json();
+      setApplications(data);
+    } catch (error) {
+      console.error("Failed to fetch applications:", error);
+      alert("Could not connect to backend. Make sure Spring Boot is running.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function handleChange(event) {
     setForm({
@@ -54,7 +42,7 @@ function App() {
     });
   }
 
-  function addApplication(event) {
+  async function addApplication(event) {
     event.preventDefault();
 
     if (!form.company || !form.role) {
@@ -62,33 +50,75 @@ function App() {
       return;
     }
 
-    const newApplication = {
-      id: Date.now(),
-      ...form
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(form)
+      });
+
+      const newApplication = await response.json();
+      setApplications([...applications, newApplication]);
+
+      setForm({
+        company: "",
+        role: "",
+        status: "Applied",
+        location: "",
+        deadline: "",
+        notes: ""
+      });
+    } catch (error) {
+      console.error("Failed to add application:", error);
+      alert("Could not add application.");
+    }
+  }
+
+  async function deleteApplication(id) {
+    try {
+      await fetch(`${API_URL}/${id}`, {
+        method: "DELETE"
+      });
+
+      setApplications(applications.filter((app) => app.id !== id));
+    } catch (error) {
+      console.error("Failed to delete application:", error);
+      alert("Could not delete application.");
+    }
+  }
+
+  async function updateStatus(id, newStatus) {
+    const selectedApplication = applications.find((app) => app.id === id);
+
+    if (!selectedApplication) return;
+
+    const updatedApplication = {
+      ...selectedApplication,
+      status: newStatus
     };
 
-    setApplications([newApplication, ...applications]);
+    try {
+      const response = await fetch(`${API_URL}/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updatedApplication)
+      });
 
-    setForm({
-      company: "",
-      role: "",
-      status: "Applied",
-      location: "",
-      deadline: "",
-      notes: ""
-    });
-  }
+      const savedApplication = await response.json();
 
-  function deleteApplication(id) {
-    setApplications(applications.filter((app) => app.id !== id));
-  }
-
-  function updateStatus(id, newStatus) {
-    setApplications(
-      applications.map((app) =>
-        app.id === id ? { ...app, status: newStatus } : app
-      )
-    );
+      setApplications(
+        applications.map((app) =>
+          app.id === id ? savedApplication : app
+        )
+      );
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      alert("Could not update status.");
+    }
   }
 
   const filteredApplications = applications
@@ -219,7 +249,9 @@ function App() {
           </div>
 
           <div className="applications">
-            {filteredApplications.length === 0 && (
+            {loading && <p className="empty">Loading applications...</p>}
+
+            {!loading && filteredApplications.length === 0 && (
               <p className="empty">No applications found.</p>
             )}
 
